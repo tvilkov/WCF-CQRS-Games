@@ -1,0 +1,13 @@
+﻿<#@ template language="C#" hostspecific="True" debug="True" #>
+<#@ output extension="txt" #>
+<#@ import namespace="System.IO" #>
+<#@ include file="T4Toolbox.tt" #>
+<#@ include file="DTOGenerator.tt" #>
+<#
+    DTOGenerator generator = new DTOGenerator();
+	generator.AssemblyPath = Path.Combine(
+		Path.GetDirectoryName(this.Host.TemplateFile), @"..\..\bin\Debug\WindsorWCFGames.exe");
+    generator.DTOsNamespace = "WindsorWCFGames.Contracts.DTO";
+	generator.EntitiesNamespace = "WindsorWCFGames.Domain";	
+    generator.Run();
+#>

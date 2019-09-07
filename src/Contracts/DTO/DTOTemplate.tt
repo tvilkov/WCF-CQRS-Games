@@ -1,0 +1,115 @@
+﻿<#@ assembly name="System.Core.dll" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="System.Reflection" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Diagnostics" #>
+<#+
+public class DTOTemplate : Template
+{
+	public Type EntityType { get; set; } //Type of the entity to generate DTO for
+	public string DTOsNamespace { get; set; } //Namespace of DTO types
+	public string EntitiesNamespace { get; set; } //Namespace of the entity types	
+	public string[] ImportNamespaces { get; set; } //Namespaces to import
+	
+	public override string TransformText()
+	{
+		GenerateUsings();
+#>
+
+namespace <#=DTOsNamespace#> 
+{ 
+	[DataContract(Name="<#=ToCamelCase(EntityType.Name)#>", Namespace="<#=DTOsNamespace#>")]
+	public partial class <#=GetDTOClassName(EntityType.Name) #> {
+
+<#+
+		foreach (PropertyInfo property in EntityType.GetProperties().Where(p=>p.CanRead))
+		{
+			if (!ShouldExport(property)) continue;
+#>
+		[DataMember(Name="<#=ToCamelCase(property.Name)#>")]    
+		public <#=GeneratePropertyTypeString(property.PropertyType)#> <#=property.Name#> { get; set; }			
+
+<#+	
+		}
+#>
+	}
+}
+<#+
+		return this.GenerationEnvironment.ToString();
+	}
+#>
+
+<#+
+
+	private bool ShouldExport(PropertyInfo property)
+	{
+		return true;
+	}
+	
+	private string ToCamelCase(string name)
+	{
+		return name.Substring(0, 1).ToLower() + name.Substring(1);
+	}
+	
+	private string GetDTOClassName(string name)
+	{
+		return name + "DTO";
+	}
+	
+	public bool IsCollection(Type propertyType)
+	{
+		if (propertyType.IsArray) return true;
+		if (propertyType.GetInterface(typeof(ICollection<>).FullName) != null) return true;
+		return false;
+	}
+	
+	private bool IsEntity(Type propertyType)
+	{
+		return propertyType.Namespace == EntitiesNamespace;
+	}
+	
+	private Type GetCollectionElementType(Type propertyType)
+	{
+		Type elemType = null;
+		if (propertyType.IsArray) return propertyType.GetElementType();
+		if ( (elemType = propertyType.GetInterface(typeof(ICollection<>).FullName)) != null) 
+		{
+			return elemType.GetGenericArguments()[0];
+		}
+		throw new ApplicationException("Can't identify type of elements for collection of type " + propertyType.Name);
+	}
+	
+	private string GeneratePropertyTypeString(Type propertyType)
+	{
+		if (IsEntity(propertyType)) return GetDTOClassName(propertyType.Name);
+		if (IsCollection(propertyType)) 
+		{
+			var collectionElementType = GetCollectionElementType(propertyType);
+			if (IsCollection(collectionElementType))
+				throw new ApplicationException("Collection of collections is not supported!");
+			var type = IsEntity(collectionElementType) ? 
+				GetDTOClassName(collectionElementType.Name) : GenerateOrdinalPropertyTypeString(collectionElementType);
+			return type + "[]";
+		}
+		return GenerateOrdinalPropertyTypeString(propertyType);
+	}
+	
+	private string GenerateOrdinalPropertyTypeString(Type propertyType)
+	{		
+		if (propertyType.IsGenericType && propertyType.GetGenericTypeDefinition() == typeof(Nullable<>))
+		{
+			//Debug.WriteLine(Nullable.GetUnderlyingType(propertyType));
+			return GeneratePropertyTypeString(Nullable.GetUnderlyingType(propertyType))+"?";
+		}
+		return propertyType.FullName;
+	}
+	
+	private void GenerateUsings()
+	{
+		foreach(var ns in ImportNamespaces ?? new string[0])
+		{
+			WriteLine("using " + ns + ";");
+		}
+	}
+}
+#>

@@ -1,0 +1,66 @@
+﻿<#@ include file="DTOTemplate.tt" #>
+<#@ import namespace="System.IO" #>
+<#@ import namespace="System.Reflection" #>
+<#@ import namespace="System.Diagnostics" #>
+
+<#+
+public class DTOGenerator : Generator
+{
+	public string DTOsNamespace { get; set; }
+	public string EntitiesNamespace { get; set; }
+	public string AssemblyPath { get; set;}
+	private readonly DTOTemplate RenderTemplate = new DTOTemplate();
+	private string outputDir;
+	
+	protected override void RunCore()
+	{
+		RenderTemplate.DTOsNamespace = DTOsNamespace;
+		RenderTemplate.EntitiesNamespace = EntitiesNamespace;		
+		RenderTemplate.ImportNamespaces = new string[] { "System", "System.ServiceModel", "System.Runtime.Serialization" };
+	
+		Debug.WriteLine(string.Format("Running DTO generation for assembly '{0}', namespace '{1}'", AssemblyPath, EntitiesNamespace));
+
+		foreach(var type in GetTypesToGenerateDtoFor())
+		{
+			var fileName = type.Name+"DTO.cs";
+			Debug.WriteLine(string.Format("Generating DTO for '{0}' -> '{1}'", type.Name, fileName));
+			RenderTemplate.EntityType = type;
+			RenderTemplate.RenderToFile(fileName);
+		}
+	}
+	
+	private IEnumerable<Type> GetTypesToGenerateDtoFor()
+	{
+		return from t in LoadProjectAssembly(AssemblyPath).GetExportedTypes()
+			where t.Namespace == EntitiesNamespace && t.IsClass && !t.IsAbstract
+			select t;
+	}
+	
+	private Assembly LoadProjectAssembly(string assemblyPath)
+	{
+	   outputDir = Path.GetDirectoryName(assemblyPath);
+
+	   if (!File.Exists(assemblyPath))
+		   throw new ArgumentException(String.Format("Project assembly file could not be located at {0}.", assemblyPath));
+
+	   AppDomain.CurrentDomain.AssemblyResolve += ResolveAssembly;
+
+	   return Assembly.Load(File.ReadAllBytes(assemblyPath));
+	}
+
+	private void Cleanup()
+	{
+		AppDomain.CurrentDomain.AssemblyResolve -= ResolveAssembly;
+	}
+
+	private Assembly ResolveAssembly(object sender, ResolveEventArgs args)
+	{
+		var dependency = Path.Combine(outputDir, args.Name.Substring(0, args.Name.IndexOf(',')) + ".dll");
+
+	   if (File.Exists(dependency))
+		   return Assembly.Load(File.ReadAllBytes(dependency));
+
+	   return null;
+	}
+}
+#>
